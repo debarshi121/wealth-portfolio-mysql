@@ -1,6 +1,6 @@
 const { incomeExpenseService } = require("../services");
 const { IncomeExpense } = require("../models");
-const { Op } = require("sequelize");
+const { Op, fn, literal } = require("sequelize");
 
 const createIncomeExpense = async (req, res) => {
 	try {
@@ -32,8 +32,8 @@ const getIncomeExpense = async (req, res) => {
 			};
 
 			if (month) {
-				const startDate = `${year}-${month.padStart(2, '0')}-01`;
-				const nextMonth = (parseInt(month) + 1).toString().padStart(2, '0');
+				const startDate = `${year}-${month.padStart(2, "0")}-01`;
+				const nextMonth = (parseInt(month) + 1).toString().padStart(2, "0");
 				const endDate = `${year}-${nextMonth}-01`;
 
 				filterOptions.date = {
@@ -44,7 +44,22 @@ const getIncomeExpense = async (req, res) => {
 		}
 
 		const incomeExpense = await IncomeExpense.findAll({ where: filterOptions });
-		return res.status(200).json({ incomeExpense });
+
+		delete filterOptions.category;
+		const financialSummary = await IncomeExpense.findAll({
+			attributes: [
+				[fn("SUM", literal('CASE WHEN category = "Income" THEN amount ELSE 0 END')), "total_income"],
+				[fn("SUM", literal('CASE WHEN category = "Expense" THEN amount ELSE 0 END')), "total_expenses"],
+			],
+			where: filterOptions,
+			raw: true,
+		});
+
+		const income = parseFloat(financialSummary[0].total_income || 0);
+		const expenses = parseFloat(financialSummary[0].total_expenses || 0);
+		const savings = income - expenses > 0 ? income - expenses : 0;
+
+		return res.status(200).json({ incomeExpense, financialSummary: { income, expenses, savings } });
 	} catch (error) {
 		return res.status(500).json({ error: error.message });
 	}
