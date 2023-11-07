@@ -1,5 +1,6 @@
 const { incomeExpenseService } = require("../services");
 const { IncomeExpense } = require("../models");
+const { Op } = require("sequelize");
 
 const createIncomeExpense = async (req, res) => {
 	try {
@@ -13,13 +14,36 @@ const createIncomeExpense = async (req, res) => {
 
 const getIncomeExpense = async (req, res) => {
 	try {
-		if(req.query.filter){
-			if(req.query.filter==='Expense' || req.query.filter==='Income'){
-				const incomeExpense = await IncomeExpense.findAll({ where: {UserId: req.user.id, category: req.query.filter}});
-				return res.status(200).json({ incomeExpense });
+		const { filter, year, month } = req.query;
+		const filterTypes = ["Expense", "Income"];
+
+		const filterOptions = {
+			UserId: req.user.id,
+		};
+
+		if (filter && filterTypes.includes(filter)) {
+			filterOptions.category = filter;
+		}
+
+		if (year) {
+			filterOptions.date = {
+				[Op.gte]: `${year}-01-01`,
+				[Op.lte]: `${year}-12-31`,
+			};
+
+			if (month) {
+				const startDate = `${year}-${month.padStart(2, '0')}-01`;
+				const nextMonth = (parseInt(month) + 1).toString().padStart(2, '0');
+				const endDate = `${year}-${nextMonth}-01`;
+
+				filterOptions.date = {
+					[Op.gte]: startDate,
+					[Op.lt]: endDate,
+				};
 			}
 		}
-		const incomeExpense = await incomeExpenseService.getAll(req.user.id);
+
+		const incomeExpense = await IncomeExpense.findAll({ where: filterOptions });
 		return res.status(200).json({ incomeExpense });
 	} catch (error) {
 		return res.status(500).json({ error: error.message });
@@ -52,11 +76,11 @@ const updateIncomeExpense = async (req, res) => {
 				return res.status(403).json({ error: "You are not authorized to perform this!" });
 			}
 			await incomeExpense.set({
-                ...incomeExpense,
-                ...req.body
-            });
-            await incomeExpense.save();
-            await incomeExpense.reload();
+				...incomeExpense,
+				...req.body,
+			});
+			await incomeExpense.save();
+			await incomeExpense.reload();
 			return res.status(200).json(incomeExpense);
 		}
 		return res.status(404).json({ error: "Income Expense not found!" });
@@ -69,5 +93,5 @@ module.exports = {
 	createIncomeExpense,
 	getIncomeExpense,
 	deleteIncomeExpense,
-	updateIncomeExpense
+	updateIncomeExpense,
 };
